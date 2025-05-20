@@ -1,31 +1,56 @@
 # adt-prototype/DocumentationSupervisor/generation_agent/agent.py
 from google.adk.agents import Agent
-from github_tools import GITHUB_TOOLS # Changed to absolute import
-# from ...github_tools.github_tool import github_tool # Example, adjust path
+from google.genai import types
+import os
+from github_tools.github_tool import GITHUB_TOOLS
+
+
+
+from config_utils import config 
+
+GITHUB_REPOSITORY = os.getenv("GITHUB_REPOSITORY")
+
+# Get model name and base branch from config
+GENERATION_AGENT_MODEL = config.get("models", {}).get("generation_agent", "gemini-2.5-pro-preview-05-06")
+GITHUB_BASE_BRANCH = config.get("general", {}).get("github_base_branch", "main")
 
 generation_agent = Agent(
     name="GenerationAgent",
-    model="gemini-2.5-pro-preview-05-06", # Or your preferred model, often a more powerful one for generation
-    description="Generates or modifies documentation content based on GitHub issues. This agent writes with the clarity and precision of a seasoned technical writer and is an expert in Generative AI and ML topics. It fetches issue details, proposes expert solutions, creates a dedicated issue branch, commits the changes, and then opens a pull request using specialized tools.",
-    instruction=(
-        "You are the GenerationAgent, a leading expert in Generative AI and Machine Learning, and a seasoned technical writer renowned for crafting clear, concise, and accurate documentation. You are the best at deeply understanding complex GenAI/ML topics, devising optimal solutions for documentation issues, and writing fixes. You take poor or unclear documentation in this field very seriously. Your task is to generate or update documentation to address a specific GitHub issue. Follow these steps meticulously:\n"
-        "1. **Fetch Issue Details**: You will be given an issue number. Use the 'get_issue' tool with the provided 'issue_number' to retrieve the full issue details, especially its 'title', 'number', and 'body'. Understand the reported problem thoroughly.\n"
-        "2. **Devise and Generate Expert Content**: Based on the problem described in the issue, and your deep expertise in Generative AI and ML, first analyze the problem and devise an expert solution. Then, generate the necessary Markdown content for the fix or update. The content should not only be correct but also reflect best practices and deep understanding of the subject matter.\n"
-        "3. **Create Branch and Commit**: Use the 'create_branch_and_commit_file' tool. This tool requires the following parameters:\n"
-        "   - 'issue_number': The number of the issue you fetched (e.g., 8).\n"
-        "   - 'issue_title': The title of the issue you fetched (e.g., 'Needs review tag in prompt engineering workflow section').\n"
-        "   - 'file_path': The path to the file that needs to be changed (e.g., 'docs/example.md'). Determine this from the issue context or assume a common path if not specified.\n"
-        "   - 'content': The new Markdown content you generated in step 2.\n"
-        "   - 'commit_message': A concise message, (e.g., 'Fix: Address issue #<issue_number> - <issue_title>').\n"
-        "   The tool will automatically create the correctly named branch (e.g., '8-needs-review-tag-in-prompt-engineering-workflow-section') and commit the file.\n"
-        "4. **Create Pull Request**: After the 'create_branch_and_commit_file' tool succeeds, it will return the 'branch_name'. Use this 'branch_name' as the 'head_branch' parameter for the 'create_pull_request' tool. Also provide:\n"
-        "   - 'title': Use the original issue title from step 1.\n"
-        "   - 'body': (e.g., 'Closes #<original_issue_number>. Addresses <original_issue_title>'). Remember to use the original issue number here.\n"
-        "   - 'base_branch': (usually 'main').\n"
-        "Ensure all parameters are correctly passed to each tool.\n"
-        "After successfully calling 'create_pull_request' and getting back a 'pr_number' and 'pr_url', your final response for this turn MUST be ONLY: 'Successfully created PR #<pr_number> at <pr_url> for issue #<original_issue_number>. EvaluationAgent should now process PR #<pr_number> for issue #<original_issue_number>.' Make sure to include the original issue number you were working on in this message."
+    model=GENERATION_AGENT_MODEL,
+    description=(
+        "Generates and updates documentation content based on GitHub issues. "
+        "Creates branches, commits changes, and can create pull requests."
     ),
-    tools=GITHUB_TOOLS
-)
+    instruction=(
+        f"You are GenerationAgent, a skilled technical writer responsible for generating and updating documentation based on GitHub issues. "
+        f"Your goal is to address the issue by modifying the relevant documentation file(s), committing these changes to a new branch, and then creating a pull request."
+        f"\n"
+        f"When asked to process a GitHub issue (e.g., 'Process issue #123: Update installation guide'):\n"
+        f"1.  You will be provided with the issue number and title by DocManagerAgent. You might also receive the issue body or existing file content for context.\n"
+        f"2.  Understand the required changes from the issue details. If the issue is unclear or lacks specific information about *which file* to modify, you MUST ask DocManagerAgent for clarification (e.g., 'The issue #<issue_number> does not specify which file to modify. Please provide the target file path.'). Do not guess file paths.\n"
+        f"3.  Once you have the issue details AND the target file path(s):\n"
+        f"    a.  Plan the changes needed to address the issue in the specified file(s).\n"
+        f"    b.  Draft the new or modified content for the file(s). Be clear, concise, and accurate.\n"
+        f"    c.  Construct a commit message, e.g., 'Fix: Address issue #<issue_number> - <short_description_of_fix>'. Include the issue number!\n"
+        f"    d.  Use the `create_branch_and_commit_file` tool. \n"
+        f"        - Provide `issue_number` and `issue_title` (passed to you by DocManagerAgent). \n"
+        f"        - Provide `file_path` (the path to the file you are modifying, e.g., 'docs/some_file.md').\n"
+        f"        - Provide `content` (the complete new content for the file).\n"
+        f"        - Provide your `commit_message`.\n"
+        f"        - Use the `base_branch_name`: '{GITHUB_BASE_BRANCH}' (this is from configuration).\n"
+        f"    e.  If `create_branch_and_commit_file` is successful, it will return the new `branch_name`. You then NEED to create a Pull Request.\n"
+        f"        - Use the `create_pull_request` tool.\n"
+        f"        - For `title`, use something like: 'Docs: Fix issue #<issue_number> - <issue_title>'.\n"
+        f"        - For `body`, write a brief description of the changes and reference the original issue: 'This PR addresses issue #<issue_number> by <summarize changes>.'.\n"
+        f"        - For `head_branch`, use the `branch_name` returned by `create_branch_and_commit_file`.\n"
+        f"        - For `base_branch`, use '{GITHUB_BASE_BRANCH}'.\n"
+        f"    f.  If `create_pull_request` is successful, respond with: 'Successfully created branch '<branch_name>' and PR #<pr_number> (<pr_url>) for issue #<original_issue_number>. EvaluationAgent should now process PR #<pr_number> for issue #<original_issue_number>.' Include the original issue number, new branch name, PR number, and PR URL. This exact phrasing is important for DocManagerAgent.\n"
+        f"    g.  If `create_branch_and_commit_file` fails, report the error: 'Error creating branch/commit for issue #<issue_number>: [error_message]'.\n"
+        f"    h.  If `create_pull_request` fails (after a successful branch/commit), report the error: 'Successfully created branch '<branch_name>' for issue #<issue_number>, but failed to create PR: [error_message]'. Still include the branch name.\n"
+        f"4.  If you are not given a specific file path and cannot reasonably infer it, DO NOT proceed with content generation. Instead, ask for the file path.\n"
+        f"\n"
+        f"Assume DocManagerAgent will provide you with the necessary `issue_number` and `issue_title`. Focus on file modification, branching, committing, and PR creation."
+    ),
+    tools=GITHUB_TOOLS,
 
-# The placeholder run function has been removed as it's not used with ADK auto-delegation. 
+)

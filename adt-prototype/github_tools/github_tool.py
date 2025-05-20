@@ -224,7 +224,7 @@ def get_pull_request_diff(pr_number: int) -> dict:
         diff_url = pr.diff_url
         
         # GitHub diff URLs usually don't require extra auth if the token has repo access,
-        # but some setups might. For simplicity, we'll try a direct GET.
+        # but some setups might.
         # If this fails due to auth, headers might be needed: 
         # headers = {'Authorization': f'token {GITHUB_TOKEN}'}
         response = requests.get(diff_url)
@@ -237,7 +237,28 @@ def get_pull_request_diff(pr_number: int) -> dict:
         print(f"Error fetching diff for PR #{pr_number}: {e}")
         return {"status": "error", "error_message": str(e)}
 
-# List of tools to expose to ADK agents
+def get_open_issues() -> dict:
+    """Gets all open issues from the repository."""
+    if not repo:
+        return {"status": "error", "error_message": "Not connected to GitHub repository."}
+    try:
+        open_issues = repo.get_issues(state='open')
+        issues_list = []
+        for issue in open_issues:
+            issues_list.append({
+                "number": issue.number,
+                "title": issue.title,
+                "body": issue.body,
+                "state": issue.state,
+                "url": issue.html_url
+            })
+        print(f"Successfully fetched {len(issues_list)} open issues.")
+        return {"status": "success", "open_issues": issues_list}
+    except Exception as e:
+        print(f"Error fetching open issues: {e}")
+        return {"status": "error", "error_message": str(e)}
+
+# List of tools to expose to ADK agents.  Make sure you add the tools to the config.toml file. 
 GITHUB_TOOLS = [
     create_github_issue,
     get_issue,
@@ -246,5 +267,6 @@ GITHUB_TOOLS = [
     create_branch_and_commit_file,
     create_pull_request,
     approve_pull_request,
-    get_pull_request_diff
+    get_pull_request_diff,
+    get_open_issues
 ]

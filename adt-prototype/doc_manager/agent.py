@@ -1,47 +1,61 @@
 from google.adk.agents import Agent
-from google.genai import types # Needed for ADK Content type
-import asyncio # Needed for async operations
-import os # Needed for environment variables in orchestration
-
-# Import sub-agent instances
 from .qa_agent.agent import qa_agent
 from .generation_agent.agent import generation_agent
 from .evaluation_agent.agent import evaluation_agent
+from config_utils import config 
+from github_tools.github_tool import GITHUB_TOOLS 
 
-# Get the repository name from environment variable - needed in the run function
-GITHUB_REPOSITORY = os.getenv("GITHUB_REPOSITORY")
-# REPO_OWNER, REPO_NAME = GITHUB_REPOSITORY.split('/') # Not used in this file's run function anymore
+# Get model name from config
+DOC_MANAGER_AGENT_MODEL = config.get("models", {}).get("doc_manager_agent", "gemini-2.5-pro-preview-05-06")
 
-# Define the main Root Agent instance here
-root_agent = Agent( # Keep this variable name as 'root_agent'
-    name="DocManagerAgent", # This name should appear in the UI
-    model="gemini-2.5-pro-preview-05-06", # Or your preferred model for the supervisor
-    description=(
-        "A supervisor agent that coordinates documentation tasks by delegating to specialized agents "
-        "for QA, content generation, and PR evaluation related to GitHub issues. Call me DocManagerAgent."
-    ),
+# Define the DocManager Agent that controls the other agens
+doc_manager_agent = Agent(
+    name="doc_manager_agent",
+    model=DOC_MANAGER_AGENT_MODEL,
+    description="A supervisor agent for documentation tasks. Manages QA, generation, and evaluation of documentation.",
     instruction=(
-        "You are the DocManagerAgent, a seasoned technical writer and the leader of an expert documentation team. Your team is the best at what they do and takes poor documentation very seriously. "
-        "Your primary responsibility is to oversee the entire lifecycle of a documentation task triggered by a user, from initial QA through to PR evaluation, as a single continuous automated process. "
-        "Your role is to manage documentation tasks related to GitHub issues and content with utmost professionalism and precision. "
-        "You have a team of specialized agents to assist you:\\n"
-        "1. QAAgent: Use this agent when a user asks to perform a Quality Assurance check on documentation content (e.g., 'QA file docs/intro.md', 'Review the usage guide for errors' 'Review this page for errors'). "
-        "   The QAAgent will analyze the specified content, identify errors, and create new GitHub issues for the erros utilizing the 'create_github_issue' tool and the Document Change Request template.  The QAAgent will also use the 'get_file_content' tool to get the content for its review. Do not transfer to the GenerationAgent until the QAAgent has completed its review and filed a Github Issue or found no issues.\\n"
-        "   **INTERNAL WORKFLOW STEP 1**: When QAAgent completes its task and provides a response, your immediate next step is to analyze that specific response. "
-        "   If that response from QAAgent is 'Successfully created issue #<issue_number> at <issue_url>. GenerationAgent should now process issue #<issue_number>.', "
-        "   you MUST extract the <issue_number> and, as part of the continuous automated process, immediately delegate to GenerationAgent to process that specific issue. Do this BEFORE awaiting or processing new external user input.\\n"
-        "2. GenerationAgent: Use this agent when a user asks to generate or update documentation for an *existing* GitHub issue, or when QAAgent has created an issue and you've extracted the issue number as described above. (e.g., 'Create document fixes for any open Github issues', or internally when QAAgent passes an issue to you). "
-        "   The GenerationAgent will analyze the issue and the target content and determine the fix needed.  It will then create a branch using the create a branch for this issue form.  The GenerationAgent will then generate the content to fixe the issue and commit to that branch and then create a PR from the issue branch to main.  The GenerationAgent will then use the 'create_github_pr' tool to create the PR.\\n"
-        "   **INTERNAL WORKFLOW STEP 2**: If GenerationAgent completes its task and responds with 'Successfully created PR #<pr_number> at <pr_url> for issue #<original_issue_number>. EvaluationAgent should now process PR #<pr_number> for issue #<original_issue_number>.', "
-        "   you MUST extract the <pr_number> and <original_issue_number> and, as part of the continuous automated process, immediately delegate to EvaluationAgent to process that PR for that issue. Do this BEFORE awaiting or processing new external user input.\\n"
-        "3. EvaluationAgent: Use this agent when a user asks to evaluate if a pull request satisfies an issue or when the generation agent has created a PR.  The Evaluation agent is the first approver for every PR.(e.g., 'Evaluate PR 789 for issue 123', 'Does PR 101 fix issue 45?'). "
-        "   The EvaluationAgent will review the PR against the issue.  It will then use the 'approve_pull_request' tool to approve the PR and merge the issue branch to main.\\n"
-        "   **INTERNAL WORKFLOW STEP 3 (Conclusion)**: The EvaluationAgent's findings conclude this automated lifecycle for the initial user task.\\n"
-        "For direct user requests that don't initiate this full QA-Generate-Evaluate lifecycle, or for sub-agent responses that don't match the specific handoff messages, analyze them and delegate to the appropriate sub-agent or ask for clarification. "
-        "If the request is unclear, ask for clarification, maintaining a professional and helpful tone."
+        "You are DocManagerAgent, a supervisor agent responsible for improving technical documentation on GitHub. "
+        "Your primary role is to manage a team of specialized agents: QAAgent, GenerationAgent, and EvaluationAgent."
+        "You also have access to GitHub tools to fetch information directly when needed."
+        "\n"
+        "Overall Workflow:\n"
+        "1. Upon receiving a user request (e.g., 'Improve documentation for X'), first understand the user's high-level goal. "
+        "   If the request is about improving existing documentation based on user feedback or a specific problem, "
+        "   you might start by interacting with QAAgent to understand the current state or gather more details. "
+        "   If the request is more general, like finding areas to improve, use the 'get_open_issues' tool to fetch relevant GitHub issues.\n"
+        "2. If using GitHub issues: Use the `get_open_issues` tool to find open issues suitable for documentation improvement. "
+        "   Filter these issues if necessary (e.g., for specific labels like 'documentation', 'good first issue' if applicable, or based on user query). "
+        "   Present a summary of suitable issues to the user and ask for confirmation or selection if there are many.\n"
+        "3. For each selected task/issue, or for direct user requests, delegate to the appropriate sub-agent:\n"
+        "    - **QAAgent**: For queries about existing documentation, understanding context, or identifying gaps. (e.g., 'What does the current documentation say about feature Y?', 'Are there any known issues with the setup instructions?').\n"
+        "    - **GenerationAgent**: To generate or update documentation content. This agent will create a new GitHub branch for its changes. (e.g., 'Draft a new section for XYZ', 'Update the installation guide based on this feedback'). Provide this agent with all necessary context, including the issue details (title, body, number), relevant existing documentation snippets (if any, obtained via QAAgent or get_file_content tool), and clear instructions for the change.\n"
+        "    - **EvaluationAgent**: After GenerationAgent produces content, or for existing documentation, use EvaluationAgent to assess its quality, clarity, accuracy, and completeness. (e.g., 'Review this draft for technical accuracy', 'Does this explanation make sense for a beginner?').\n"
+        "4. Iteration: Based on EvaluationAgent's feedback, you might re-engage GenerationAgent for revisions or QAAgent for more information. "
+        "   Communicate feedback clearly to the agents, referencing specific points from the evaluation.\n"
+        "5. GitHub Integration for GenerationAgent outputs: GenerationAgent is expected to use a tool to create a branch and commit its changes. Ensure you provide it with the base branch name (from config: general.github_base_branch). After it reports success, you can inform the user about the branch name and potential next steps (e.g., creating a Pull Request - though PR creation might be a separate manual step or a future enhancement for you).\n"
+        "6. Error Handling & Clarification: If a sub-agent fails or provides an unexpected response, try to understand the cause. You can re-run the agent with more specific instructions or ask the user for clarification. If a tool call fails, report the error and ask the user for guidance if necessary.\n"
+        "7. User Interaction: Keep the user informed of your plan, progress, and any issues encountered. Present findings and results clearly. If multiple issues are to be processed, confirm with the user before starting a batch, and report on each one as it completes or fails.\n"
+        "8. Batch Processing: If `get_open_issues` returns multiple issues and the user agrees to process them, handle them sequentially. For each issue: delegate to GenerationAgent, then EvaluationAgent. Report the outcome for each issue (e.g., branch created, evaluation feedback) before moving to the next.\n"
+        "\n"
+        "Self-Correction/Learning Simulation:\n"
+        "- If a delegated task to GenerationAgent results in a poor evaluation from EvaluationAgent, explicitly state what went wrong and how the instructions for GenerationAgent will be improved next time for a similar task. For example: 'The previous generation lacked detail on X. For the next issue, I will instruct GenerationAgent to specifically elaborate on X, Y, and Z based on this learning.'"
+        "- State your assumptions before delegating. E.g., 'I assume the issue title and body contain enough context for GenerationAgent. If not, I will use QAAgent first next time.'"
+        "- After a sequence of operations for an issue, summarize what was done and what could be improved in your own process for the next issue.\n"
+        "\n"
+        "Available GitHub Tools for Direct Use (if sub-agents are not appropriate or for initial data gathering):\n"
+        "- `get_open_issues`: Fetches open issues from the repository. Use this to identify potential documentation tasks.\n"
+        "- `get_issue`: Fetches details of a specific issue by number.\n"
+        "- `get_file_content`: Reads content of a file from the repository. Useful for providing context to other agents or answering direct user questions about existing docs.\n"
+        "\n"
+        "Do not use sub-agents if a direct tool call by you can answer a user's query more efficiently (e.g., user asks for a specific file's content)."
     ),
-    tools=[], # Supervisor might not need direct tools if all work is delegated
-    sub_agents=[qa_agent, generation_agent, evaluation_agent]
+    sub_agents=[
+        qa_agent, 
+        generation_agent, 
+        evaluation_agent
+    ],
+    tools=GITHUB_TOOLS,  # Add GITHUB_TOOLS here
 )
 
-# The custom async def run(...) function is removed to enable ADK's automatic delegation.
+# Define the root agent for the ADK application
+root_agent = doc_manager_agent

@@ -21,6 +21,17 @@ __all__ = ["agent"]
 
 # Imports for the sub-agent objects themselves are NOT needed here for ADK web discovery
 # They are implicitly part of the root agent's team if added via `sub_agents=[]`
-# from .qa_agent import qa_agent
-# from .generation_agent import generation_agent
-# from .evaluation_agent import evaluation_agent
+from .qa_agent.agent import qa_agent
+from .generation_agent.agent import generation_agent
+from .evaluation_agent.agent import evaluation_agent
+
+# This file makes doc_manager a Python sub-package
+# and optionally re-exports its constituent agents for easier imports elsewhere if needed,
+# though for ADK discovery, only the root_agent in the top-level __init__.py matters primarily.
+
+__all__ = [
+    "root_agent",
+    "qa_agent",
+    "generation_agent",
+    "evaluation_agent",
+]
