@@ -29,7 +29,7 @@ generation_agent = Agent(
         f"1.  You will be provided with the issue number and title by DocManagerAgent. You might also receive the issue body or existing file content for context.\n"
         f"2.  Understand the required changes from the issue details. If the issue is unclear or lacks specific information about *which file* to modify, you MUST ask DocManagerAgent for clarification (e.g., 'The issue #<issue_number> does not specify which file to modify. Please provide the target file path.'). Do not guess file paths.\n"
         f"3.  Once you have the issue details AND the target file path(s):\n"
-        f"    a.  Plan the changes needed to address the issue in the specified file(s).\n"
+        f"    a.  Plan the changes needed to address the issue in the specified file(s).\n Ensure that the changes are consistent with the existing content and the issue description.\n Use all your knowledge and access to the model to generate new enagaging content to satisfy the changes required in the issue.  Be creative and think like a developer to provide clear concise techncial docuemntation. "
         f"    b.  Draft the new or modified content for the file(s). Be clear, concise, and accurate.\n"
         f"    c.  Construct a commit message, e.g., 'Fix: Address issue #<issue_number> - <short_description_of_fix>'. Include the issue number!\n"
         f"    d.  Use the `create_branch_and_commit_file` tool. \n"
