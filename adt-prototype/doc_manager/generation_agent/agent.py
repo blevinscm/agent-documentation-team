@@ -1,16 +1,12 @@
-# adt-prototype/DocumentationSupervisor/generation_agent/agent.py
 from google.adk.agents import Agent
 from google.genai import types
 import os
 from github_tools.github_tool import GITHUB_TOOLS
 
-
-
-from config_utils import config 
+from config_utils import config
 
 GITHUB_REPOSITORY = os.getenv("GITHUB_REPOSITORY")
 
-# Get model name and base branch from config
 GENERATION_AGENT_MODEL = config.get("models", {}).get("generation_agent", "gemini-2.5-pro-preview-05-06")
 GITHUB_BASE_BRANCH = config.get("general", {}).get("github_base_branch", "main")
 

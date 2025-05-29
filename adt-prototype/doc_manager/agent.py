@@ -2,13 +2,11 @@ from google.adk.agents import Agent
 from .qa_agent.agent import qa_agent
 from .generation_agent.agent import generation_agent
 from .evaluation_agent.agent import evaluation_agent
-from config_utils import config 
-from github_tools.github_tool import GITHUB_TOOLS 
+from config_utils import config
+from github_tools.github_tool import GITHUB_TOOLS
 
-# Get model name from config
 DOC_MANAGER_AGENT_MODEL = config.get("models", {}).get("doc_manager_agent", "gemini-2.5-pro-preview-05-06")
 
-# Define the DocManager Agent that controls the other agens
 doc_manager_agent = Agent(
     name="doc_manager_agent",
     model=DOC_MANAGER_AGENT_MODEL,
@@ -57,12 +55,11 @@ doc_manager_agent = Agent(
         "Do not use sub-agents if a direct tool call by you can answer a user's query more efficiently (e.g., user asks for a specific file's content)."
     ),
     sub_agents=[
-        qa_agent, 
-        generation_agent, 
+        qa_agent,
+        generation_agent,
         evaluation_agent
     ],
-    tools=GITHUB_TOOLS,  # Add GITHUB_TOOLS here
+    tools=GITHUB_TOOLS,
 )
 
-# Define the root agent for the ADK application
 root_agent = doc_manager_agent

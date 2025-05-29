@@ -1,9 +1,7 @@
-# adt-prototype/DocumentationSupervisor/qa_agent/agent.py
 from google.adk.agents import Agent
-from github_tools.github_tool import GITHUB_TOOLS 
-from config_utils import config 
+from github_tools.github_tool import GITHUB_TOOLS
+from config_utils import config
 
-# Get model name from config
 QA_AGENT_MODEL = config.get("models", {}).get("qa_agent", "gemini-2.5-pro-preview-05-06")
 
 qa_agent = Agent(
@@ -34,5 +32,5 @@ qa_agent = Agent(
         "Be precise and actionable in your issue reports."
     ),
     tools=GITHUB_TOOLS,
-    
+
 )
